@@ -30,6 +30,7 @@ export async function die(o: Organism, cause: string): Promise<void> {
   };
 
   const txHash = await chain.recordDeath(epitaph);
+  o.tradeArchive[o.gen] = [...o.trades]; // preserve the full feed for cross-gen comparison
   o.lineage.push(epitaph);
   o.save();
   o.emitEvent({ type: "epitaph", epitaph, txHash });

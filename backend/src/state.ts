@@ -22,6 +22,7 @@ export class Organism extends EventEmitter {
   inherited: string[] = [];
   thoughtLog: { ts: number; monologue: string }[] = [];
   balanceHistory: { ts: number; bal: number }[] = [];
+  tradeArchive: Record<number, Trade[]> = {}; // dead generations' full feeds
 
   emitEvent(e: WsEvent) {
     this.emit("event", e);

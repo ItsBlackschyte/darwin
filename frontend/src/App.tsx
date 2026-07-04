@@ -357,21 +357,49 @@ function ThoughtList() {
   );
 }
 
-/** All metabolic events + colored total — live, repolls every 3s while open. */
+/** All metabolic events + colored total — with generation tabs for comparison. */
 function MetabolicList() {
   const [rows, setRows] = useState<Trade[]>([]);
+  const [gens, setGens] = useState<{ current: number; archived: number[] }>({ current: 1, archived: [] });
+  const [sel, setSel] = useState<number | null>(null); // null = follow the living gen
+
   useEffect(() => {
     const load = () =>
-      fetch("/api/trades?limit=1000").then((r) => r.json()).then(setRows).catch(() => {});
+      fetch("/api/gens").then((r) => r.json()).then(setGens).catch(() => {});
     load();
     const id = setInterval(load, 3000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    const g = sel ?? gens.current;
+    const load = () =>
+      fetch(`/api/trades?limit=1000&gen=${g}`).then((r) => r.json()).then(setRows).catch(() => {});
+    load();
+    const id = setInterval(load, 3000);
+    return () => clearInterval(id);
+  }, [sel, gens.current]);
+
   const total = rows.reduce((s, t) => s + t.pnlMon, 0);
   const cls = total > 0 ? "ok" : total < 0 ? "bad" : "dim";
-  if (rows.length === 0) return <div className="dim">no metabolic events yet</div>;
+  const allGens = [...gens.archived, gens.current].sort((a, b) => a - b);
+  const active = sel ?? gens.current;
+
   return (
     <>
+      <div className="gentabs">
+        {allGens.map((g) => (
+          <button
+            key={g}
+            className={`gtab ${g === active ? "on" : ""}`}
+            onClick={() => setSel(g === gens.current ? null : g)}
+          >
+            GEN-{String(g).padStart(2, "0")}
+            {g === gens.current ? " ●" : ""}
+          </button>
+        ))}
+      </div>
+      {rows.length === 0 && <div className="dim">no metabolic events recorded for this generation</div>}
       {[...rows].reverse().map((t) => (
         <div key={t.ts} style={{ display: "flex", justifyContent: "space-between" }}>
           <span className="dim">{clock(t.ts)}</span>
@@ -379,7 +407,7 @@ function MetabolicList() {
         </div>
       ))}
       <div className="totalrow">
-        <span className="dim">total earnings</span>
+        <span className="dim">total earnings — GEN-{String(active).padStart(2, "0")}</span>
         <span className={cls}>
           {total > 0 ? "+" : ""}
           {total.toFixed(2)} MON

@@ -307,3 +307,14 @@ body {
 
 /* ---- reticle cursor scope: native cursor hidden only in the viewport ---- */
 .box, .box * { cursor: none !important; }
+
+/* ---- generation tabs in metabolic modal ---- */
+.gentabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.gtab {
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--line-2); border-radius: 2px;
+  font-family: var(--disp); font-size: 10.5px; letter-spacing: 0.12em;
+  padding: 5px 10px; cursor: pointer; text-transform: uppercase;
+}
+.gtab:hover { color: var(--phos); border-color: var(--phos-dim); }
+.gtab.on { color: var(--phos); border-color: var(--phos); background: rgba(124, 227, 168, 0.08); }

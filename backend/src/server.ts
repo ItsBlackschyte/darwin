@@ -35,8 +35,13 @@ export function startServer(o: Organism) {
   app.get("/api/history", (_req, res) => res.json(o.balanceHistory));
   app.get("/api/trades", (req, res) => {
     const limit = Number(req.query.limit ?? 100);
-    res.json(o.trades.slice(-limit));
+    const gen = req.query.gen ? Number(req.query.gen) : o.gen;
+    const rows = gen === o.gen ? o.trades : o.tradeArchive[gen] ?? [];
+    res.json(rows.slice(-limit));
   });
+  app.get("/api/gens", (_req, res) =>
+    res.json({ current: o.gen, archived: Object.keys(o.tradeArchive).map(Number) })
+  );
 
   // --- demo triggers (your on-stage hotkeys hit these) ---
   app.post("/api/demo/kill", async (_req, res) => {
