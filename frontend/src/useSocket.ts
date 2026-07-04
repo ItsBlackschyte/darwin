@@ -35,14 +35,23 @@ export function useSocket(): OrganismView {
   });
   const rebirthTimer = useRef<number | null>(null);
 
-  // initial genome + inherited lessons snapshot
+  // genome + inherited lessons snapshot — polled so a backend restart
+  // or missed WS event can never leave the panel stuck on "loading"
   useEffect(() => {
-    fetch("/api/state")
-      .then((r) => r.json())
-      .then((s) =>
-        setView((v) => ({ ...v, genome: s.genome ?? null, inherited: s.inherited ?? [] }))
-      )
-      .catch(() => {});
+    const load = () =>
+      fetch("/api/state")
+        .then((r) => r.json())
+        .then((s) =>
+          setView((v) => ({
+            ...v,
+            genome: s.genome ?? v.genome,
+            inherited: s.inherited?.length ? s.inherited : v.inherited,
+          }))
+        )
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 3000);
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -66,7 +75,7 @@ export function useSocket(): OrganismView {
             case "prices":
               return { ...v, prices: e.prices[0] ?? null };
             case "trade": {
-              const feed = [e.trade, ...v.feed].slice(0, 8);
+              const feed = [e.trade, ...v.feed].slice(0, 40);
               return e.trade.outcome === "won"
                 ? { ...v, feed, winPulse: v.winPulse + 1 }
                 : { ...v, feed, lossPulse: v.lossPulse + 1 };

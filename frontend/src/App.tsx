@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import Specimen from "./components/Specimen";
-import { donate, kill, useSocket } from "./useSocket";
-import type { Epitaph, Genome, Trade } from "./types";
 import TargetCursor from "./components/TargetCursor";
 import PanelGlow from "./components/PanelGlow";
+import { donate, kill, useSocket } from "./useSocket";
+import type { Epitaph, Genome, Trade } from "./types";
 
 const fmt = (n: number | undefined, d = 2) => (n ?? 0).toFixed(d);
 const mins = (sec: number) => `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
@@ -26,10 +26,11 @@ export default function App() {
     : 0;
   const threshold = v.genome?.gapThresholdBps ?? 60;
 
-return (
-    <div className="app">
+  return (
+    <>
       <TargetCursor scopeSelector=".box" targetSelector=".cursor-target" spinDuration={2.5} />
       <PanelGlow selector=".panel" spotlightRadius={280} glowColor="124, 227, 168" />
+    <div className="app">
       {/* ============ HEADER ============ */}
       <div className="header">
         <div>
@@ -53,6 +54,7 @@ return (
 
       {/* ============ MAIN ROW: containment box + right rail ============ */}
       <div className="main">
+        <div className="leftcol">
         <div className="box">
           <Specimen
             phase={v.phase}
@@ -63,18 +65,18 @@ return (
           />
           <div className="boxlabel">containment unit 01</div>
           <div className="boxbtn left">
-            {/* <button className="labbtn kill" onClick={() => kill()} disabled={v.phase !== "alive"}> */}
             <button className="labbtn kill cursor-target" onClick={() => kill()} disabled={v.phase !== "alive"}>
               ⚠ terminate
             </button>
           </div>
           <div className="boxbtn right">
-            {/* <button className="labbtn feed" onClick={() => donate()} disabled={v.phase !== "alive"}> */}
             <button className="labbtn feed cursor-target" onClick={() => donate()} disabled={v.phase !== "alive"}>
               ⚡ donate 0.25
             </button>
           </div>
           {v.phase === "dead" && v.epitaph && <EpitaphCard e={v.epitaph} />}
+        </div>
+          <MarketPanel prices={v.prices} threshold={threshold} gapBps={gapBps} />
         </div>
 
         <div className="rail">
@@ -117,15 +119,15 @@ return (
           <div className="panel grow">
             <PanelHead title="metabolic events" onExpand={() => setModal("metabolic")} />
             {v.feed.length === 0 && <div className="dim">waiting for the first meal…</div>}
-            {v.feed.slice(0, 6).map((t) => (
+            {v.feed.slice(0, 14).map((t) => (
               <TradeRow key={t.ts} t={t} />
             ))}
           </div>
         </div>
       </div>
 
-      {/* ============ GENOME + INHERITANCE ============ */}
-      <div className="panels">
+      {/* ============ BOTTOM STRIP: genome + instincts + archive ============ */}
+      <div className="bottom">
         <GenomeCard genome={v.genome} />
         <div className="panel">
           <PanelHead
@@ -139,8 +141,6 @@ return (
             <div key={i} className="lesson">“{l}”</div>
           ))}
         </div>
-      </div>
-
       {/* ============ SPECIMEN ARCHIVE ============ */}
       <div className="archive panel">
         <PanelHead title="specimen archive" onExpand={() => setModal("archive")} />
@@ -164,6 +164,7 @@ return (
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       {/* ============ MODALS ============ */}
@@ -216,6 +217,7 @@ return (
         </Modal>
       )}
     </div>
+    </>
   );
 }
 
@@ -279,6 +281,116 @@ function TradeRow({ t }: { t: Trade }) {
         : t.outcome === "won"
         ? `absorbed (${t.gapBps}bps)`
         : "race lost"}
+    </div>
+  );
+}
+
+/** Market telemetry: the two hunting grounds, side by side, with a live
+ *  dual-line chart. When the lines split, prey exists. */
+function MarketPanel({
+  prices,
+  threshold,
+  gapBps,
+}: {
+  prices: { pair: string; priceA: number; priceB: number } | null;
+  threshold: number;
+  gapBps: number;
+}) {
+  const cvRef = useRef<HTMLCanvasElement>(null);
+  const hist = useRef<{ a: number; b: number }[]>([]);
+  const peak = useRef(0);
+
+  useEffect(() => {
+    if (!prices) return;
+    hist.current.push({ a: prices.priceA, b: prices.priceB });
+    if (hist.current.length > 400) hist.current.shift();
+    peak.current = Math.max(peak.current, gapBps);
+
+    const cv = cvRef.current;
+    if (!cv) return;
+    if (cv.width !== cv.clientWidth) cv.width = cv.clientWidth;
+    cv.height = 150;
+    const ctx = cv.getContext("2d")!;
+    const W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
+    const h = hist.current;
+    if (h.length < 2) return;
+
+    let lo = Infinity, hi = -Infinity;
+    for (const p of h) {
+      lo = Math.min(lo, p.a, p.b);
+      hi = Math.max(hi, p.a, p.b);
+    }
+    const pad2 = (hi - lo) * 0.15 || 1;
+    lo -= pad2; hi += pad2;
+    const X = (i: number) => (i / (h.length - 1)) * W;
+    const Y = (val: number) => H - ((val - lo) / (hi - lo)) * (H - 8) - 4;
+
+    ctx.strokeStyle = "rgba(124,227,168,.07)";
+    for (const f of [0.25, 0.5, 0.75]) {
+      ctx.beginPath(); ctx.moveTo(0, H * f); ctx.lineTo(W, H * f); ctx.stroke();
+    }
+    ctx.beginPath();
+    h.forEach((p, i) => (i ? ctx.lineTo(X(i), Y(p.a)) : ctx.moveTo(X(0), Y(p.a))));
+    for (let i = h.length - 1; i >= 0; i--) ctx.lineTo(X(i), Y(h[i].b));
+    ctx.closePath();
+    ctx.fillStyle = "rgba(232,194,96,.10)";
+    ctx.fill();
+    ctx.beginPath();
+    h.forEach((p, i) => (i ? ctx.lineTo(X(i), Y(p.a)) : ctx.moveTo(X(0), Y(p.a))));
+    ctx.strokeStyle = "#7CE3A8"; ctx.lineWidth = 1.4; ctx.stroke();
+    ctx.beginPath();
+    h.forEach((p, i) => (i ? ctx.lineTo(X(i), Y(p.b)) : ctx.moveTo(X(0), Y(p.b))));
+    ctx.strokeStyle = "#E8C260"; ctx.lineWidth = 1.4; ctx.stroke();
+    const last = h[h.length - 1];
+    ctx.font = "10px 'IBM Plex Mono', monospace";
+    ctx.fillStyle = "#7CE3A8";
+    ctx.fillText(last.a.toFixed(2), W - 58, Y(last.a) - 4);
+    ctx.fillStyle = "#E8C260";
+    ctx.fillText(last.b.toFixed(2), W - 58, Y(last.b) + 12);
+  }, [prices, gapBps]);
+
+  if (!prices) return null;
+  const mid = (prices.priceA + prices.priceB) / 2;
+  const dA = ((prices.priceA - mid) / mid) * 10000;
+  const dB = ((prices.priceB - mid) / mid) * 10000;
+  const hot = gapBps >= threshold;
+
+  return (
+    <div className="panel market">
+      <div className="phead">
+        <span className="label">market telemetry — {prices.pair}</span>
+        <span className={`dim ${hot ? "ok" : ""}`}>
+          spread {gapBps.toFixed(1)}bps · session peak {peak.current.toFixed(0)}bps
+          {hot ? " — PREY IN RANGE" : ""}
+        </span>
+      </div>
+      <div className="mkt">
+        <div className="venues">
+          <div className="venue">
+            <span className="vdot" style={{ background: "#7CE3A8" }} />
+            <span className="vname">VENUE A · UNISWAP V2</span>
+            <span className="vtag">DEX</span>
+            <span className="vprice mono">${prices.priceA.toFixed(2)}</span>
+            <span className={`mono ${dA >= 0 ? "ok" : "bad"}`}>
+              {dA >= 0 ? "+" : ""}{dA.toFixed(1)}bps
+            </span>
+          </div>
+          <div className="venue">
+            <span className="vdot" style={{ background: "#E8C260" }} />
+            <span className="vname">VENUE B · SUSHISWAP</span>
+            <span className="vtag">DEX</span>
+            <span className="vprice mono">${prices.priceB.toFixed(2)}</span>
+            <span className={`mono ${dB >= 0 ? "ok" : "bad"}`}>
+              {dB >= 0 ? "+" : ""}{dB.toFixed(1)}bps
+            </span>
+          </div>
+          <div className="dim vfoot">
+            hunt trigger: spread ≥ {threshold}bps · the shaded band is the meal
+          </div>
+        </div>
+        <canvas ref={cvRef} className="mktchart" />
+      </div>
     </div>
   );
 }
